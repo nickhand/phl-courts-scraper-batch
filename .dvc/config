@@ -1,2 +1,6 @@
 [core]
     autostage = true
+    remote = remote
+['remote "remote"']
+    url = s3://phl-courts-scraper-batch
+    region = us-east-1
