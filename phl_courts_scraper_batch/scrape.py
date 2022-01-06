@@ -3,6 +3,7 @@ import inspect
 import numpy as np
 from loguru import logger
 from phl_courts_scraper.court_summary import CourtSummaryParser
+
 # from phl_courts_scraper.docket_sheet import DocketSheetParser
 from phl_courts_scraper.portal import UJSPortalScraper
 
@@ -146,6 +147,10 @@ def scrape(
     else:
         data_chunk = data
         chunk = None
+
+    # No data, then return
+    if not len(data_chunk):
+        return
 
     # Run the scraper
     if debug:
