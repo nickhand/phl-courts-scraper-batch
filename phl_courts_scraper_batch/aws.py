@@ -110,7 +110,7 @@ class AWS:
         log_freq=50,
         seed=42,
         errors="ignore",
-        sleep=7,
+        sleep=2,
         interval=1,
         time_limit=20,
         output_folder=None,
