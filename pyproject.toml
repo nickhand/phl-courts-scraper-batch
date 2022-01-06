@@ -1,0 +1,34 @@
+[tool.poetry]
+name = "phl_courts_scraper_batch"
+version = "0.1.0"
+description = "Python toolkit to run batch jobs on AWS using PhilaController/phl-courts-scraper"
+authors = ["Nick Hand <nick.hand@phila.gov>"]
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+pandas = "^1.3.3"
+click = "^8.0.3"
+loguru = "^0.5.3"
+boto3 = "^1.18.59"
+python-dotenv = "^0.19.1"
+desert = "^2020.11.18"
+simplejson = "^3.17.5"
+dvc = {extras = ["s3"], version = "^2.9.3"}
+openpyxl = "^3.0.9"
+schema = "^0.7.5"
+s3fs = "^2021.11.1"
+dulwich = "0.20.26"
+phl-courts-scraper = {git = "https://github.com/PhilaController/phl-courts-scraper.git", rev = "master"}
+
+[tool.poetry.dev-dependencies]
+black = "21.5b0"
+ipython = "^7.28.0"
+
+
+[tool.poetry.scripts]
+phl-courts-scraper-batch = "phl_courts_scraper_batch.__main__:cli"
+
+[build-system]
+requires = ["poetry>=0.12"]
+build-backend = "poetry.masonry.api"

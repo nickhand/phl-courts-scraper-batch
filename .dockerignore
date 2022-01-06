@@ -1,0 +1,10 @@
+# Ignore everything
+**
+
+# ... except for dependencies and source
+!poetry.lock
+!pyproject.toml
+!MANIFEST.in
+!phl_courts_scraper_batch
+phl_courts_scraper_batch/results
+!data
