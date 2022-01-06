@@ -9,12 +9,6 @@ from loguru import logger
 from . import APP_NAME, DATA_DIR
 
 
-def add_chunk_to_filename(path, chunk):
-    """Add chunk to file path."""
-    fields = os.path.splitext(path)
-    return f"{fields[0]}_{chunk}{fields[1]}"
-
-
 def get_output_paths(flavor, dataset, chunk, output_folder=None):
     """Get the output paths."""
     # Determine the output folder
@@ -25,10 +19,10 @@ def get_output_paths(flavor, dataset, chunk, output_folder=None):
         output_folder = f"results/{dataset}/{tag}"
 
     if chunk is None:
-        outfile = flavor + ".json"
+        outfile = f"{flavor}_results.json"
     else:
         output_folder += "/chunks"
-        outfile = add_chunk_to_filename(flavor, chunk) + ".json"
+        outfile = f"{flavor}_results_{chunk}.json"
 
     outfile = f"{output_folder}/{outfile}"
     return output_folder, outfile

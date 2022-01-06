@@ -3,7 +3,6 @@ import inspect
 import numpy as np
 from loguru import logger
 from phl_courts_scraper.court_summary import CourtSummaryParser
-
 # from phl_courts_scraper.docket_sheet import DocketSheetParser
 from phl_courts_scraper.portal import UJSPortalScraper
 
@@ -190,12 +189,12 @@ def scrape(
         if chunk is not None:
             io.save_output_data(f"{output_folder}/config_{chunk}.json", config, aws=aws)
             io.save_output_data(
-                f"{output_folder}/input_{flavor}_{chunk}.csv", data_chunk, aws=aws
+                f"{output_folder}/{flavor}_input_{chunk}.csv", data_chunk, aws=aws
             )
         else:
             io.save_output_data(f"{output_folder}/config.json", config, aws=aws)
             io.save_output_data(
-                f"{output_folder}/input_{flavor}.csv", data_chunk, aws=aws
+                f"{output_folder}/{flavor}_input.csv", data_chunk, aws=aws
             )
 
         if debug:

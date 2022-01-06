@@ -26,71 +26,6 @@ def is_ec2_instance():
     return os.getenv("AWS_EXECUTION_ENV") == "AWS_ECS_FARGATE"
 
 
-def combine_parallel_results(flavor: str, dataset: str, output_folder: str):
-    """Iterate through parallel, chunked scraping results from AWS."""
-
-    # Make sure it exists
-    if not output_folder.is_dir():
-        raise FileNotFoundError(
-            f"Output folder does not exist for parallel results: '{output_folder}'"
-        )
-
-    # Get the files
-    tags = [flavor, f"input_{flavor}"]
-    extensions = [".json", ".csv"]
-
-    for i, (tag, extension) in enumerate(zip(tags, extensions)):
-
-        # Get the files
-        files = sorted(output_folder.glob(f"{tag}_*{extension}"))
-        N = len(files)
-        if N == 0:
-            raise ValueError(
-                f"No files found for dataset '{dataset}' and kind '{flavor}' in output folder '{output_folder}'"
-            )
-
-        # Combine
-        if i == 0:
-            logger.info(
-                f"Combining {N} files for dataset '{dataset}' and kind '{flavor}'"
-            )
-        results = None
-        for f in files:
-
-            # load this result
-            if extension == ".json":
-                r = json.load(f.open("r"))
-
-                # Convert to a list if we need to
-                if isinstance(r, dict):
-                    r = [v for _, v in r.items() if v]
-
-                # Add the results
-                if results is None:
-                    results = r
-                else:
-                    results += r
-            else:
-
-                r = pd.read_csv(f, header=None)
-                if results is None:
-                    results = r
-                else:
-                    results = pd.concat([results, r])
-
-        # Save
-        filename = (output_folder / ".." / f"{tag}{extension}").resolve()
-
-        if i == 0:
-            logger.info(f"Total number of results from AWS: {len(results)}")
-            logger.info(f"Saving combined results to {filename}")
-
-        if extension == ".json":
-            json.dump(results, filename.open("w"))
-        else:
-            results.to_csv(filename, header=False, index=False)
-
-
 class AWS:
     """Connection to Amazon Web Services."""
 
@@ -285,16 +220,87 @@ class AWS:
         if any([code != 0 for code in exit_codes]):
             logger.warning("One or more tasks failed!")
 
-        # If no issues, sync from AWS
-        source = f"s3://{APP_NAME}"
-        dest = DATA_DIR
-        self.sync(source, dest)
-
         # And combine
-        logger.info("Combining parallel results from AWS")
-        combine_parallel_results(flavor, dataset, DATA_DIR / output_folder / "chunks")
+        logger.info("Combining parallel results on AWS")
+        self.combine_parallel_results(
+            flavor, dataset, f"s3://{APP_NAME}/{output_folder}/chunks"
+        )
 
         return tasks
+
+    def combine_parallel_results(self, flavor, dataset, output_folder):
+        """Iterate through parallel, chunked scraping results from AWS."""
+
+        # Make sure it exists
+        if not self.exists(output_folder):
+            raise FileNotFoundError(
+                f"Output folder does not exist for parallel results: '{output_folder}'"
+            )
+
+        # The file system
+        fs = self.remote
+
+        # Get the files
+        tags = [f"{flavor}_results", f"{flavor}_input"]
+        extensions = [".json", ".csv"]
+
+        for i, (tag, extension) in enumerate(zip(tags, extensions)):
+
+            # Get the files
+            pattern = f"{output_folder}/{tag}*{extension}"
+            files = sorted(fs.glob(pattern))
+            N = len(files)
+            if N == 0:
+                raise ValueError(
+                    f"No files found for dataset '{dataset}' and kind '{flavor}' in output folder '{output_folder}'"
+                )
+
+            # Combine
+            if i == 0:
+                logger.info(
+                    f"Combining {N} files for dataset '{dataset}' and kind '{flavor}'"
+                )
+            results = None
+            for f in files:
+
+                with fs.open(f, "rb") as ff:
+
+                    # load this result
+                    if extension == ".json":
+                        r = json.loads(ff.read())
+
+                        # Convert to a list if we need to
+                        if isinstance(r, dict):
+                            r = [v for _, v in r.items() if v]
+
+                        # Add the results
+                        if results is None:
+                            results = r
+                        else:
+                            results += r
+                    else:
+
+                        r = pd.read_csv(ff, header=None)
+                        if results is None:
+                            results = r
+                        else:
+                            results = pd.concat([results, r])
+
+            # Normalize the output file
+            filename = f"{output_folder}/../{tag}{extension}"
+            if filename.startswith("s3://"):
+                filename = filename[5:]
+            filename = f"s3://{os.path.normpath(filename)}"
+
+            if i == 0:
+                logger.info(f"Total number of results from AWS: {len(results)}")
+                logger.info(f"Saving combined results to {filename}")
+
+            with fs.open(filename, "w") as ff:
+                if extension == ".json":
+                    ff.write(json.dumps(results))
+                else:
+                    results.to_csv(ff, header=False, index=False)
 
     def sync(
         self,
