@@ -222,14 +222,17 @@ class AWS:
 
         # And combine
         logger.info("Combining parallel results on AWS")
-        self.combine_parallel_results(
+        outfile = self.combine_parallel_results(
             flavor, dataset, f"s3://{APP_NAME}/{output_folder}/chunks"
         )
 
-        return tasks
+        return outfile
 
     def combine_parallel_results(self, flavor, dataset, output_folder):
         """Iterate through parallel, chunked scraping results from AWS."""
+
+        # Invalidate the cache
+        self.remote.invalidate_cache()
 
         # Make sure it exists
         if not self.exists(output_folder):
@@ -244,6 +247,7 @@ class AWS:
         tags = [f"{flavor}_results", f"{flavor}_input"]
         extensions = [".json", ".csv"]
 
+        data_file = None
         for i, (tag, extension) in enumerate(zip(tags, extensions)):
 
             # Get the files
@@ -293,6 +297,9 @@ class AWS:
             filename = f"s3://{os.path.normpath(filename)}"
 
             if i == 0:
+                data_file = filename
+
+            if i == 0:
                 logger.info(f"Total number of results from AWS: {len(results)}")
                 logger.info(f"Saving combined results to {filename}")
 
@@ -301,6 +308,8 @@ class AWS:
                     ff.write(json.dumps(results))
                 else:
                     results.to_csv(ff, header=False, index=False)
+
+        return data_file
 
     def sync(
         self,
