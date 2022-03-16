@@ -195,6 +195,25 @@ class AWS:
         if not wait:
             return
 
+        # Check if provisioning failed:
+        failed = False
+        for task in tasks:
+            if not len(task["tasks"]) and len(task["tasks"]["failures"]):
+                failed = True
+                reason = task["tasks"]["failures"][0]["reason"]
+                logger.warning(f"Task provisioning failed: {reason}")
+
+        # Trim to successful tasks
+        tasks = [task for task in tasks if len(task["tasks"])]
+
+        # Stop successful
+        if failed:
+            for task in tasks:
+                self.ecs.stop_task(
+                    cluster=self.cluster_name, task=task["tasks"][0]["taskArn"]
+                )
+            raise ValueError("Error provisioning some tasks; all tasks stopped.")
+
         # Get the task ids
         task_ids = [task["tasks"][0]["taskArn"] for task in tasks]
 
