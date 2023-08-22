@@ -530,22 +530,6 @@ files = [
 six = "*"
 
 [[package]]
-name = "configparser"
-version = "5.2.0"
-description = "Updated configparser from Python 3.8 for Python 2.6+."
-category = "main"
-optional = false
-python-versions = ">=3.6"
-files = [
-    {file = "configparser-5.2.0-py3-none-any.whl", hash = "sha256:e8b39238fb6f0153a069aa253d349467c3c4737934f253ef6abac5fe0eca1e5d"},
-    {file = "configparser-5.2.0.tar.gz", hash = "sha256:1b35798fdf1713f1c3139016cfcbc461f09edbf099d1fb658d4b7479fcaa3daa"},
-]
-
-[package.extras]
-docs = ["jaraco.packaging (>=8.2)", "jaraco.tidelift (>=1.4)", "rst.linker (>=1.9)", "sphinx"]
-testing = ["pytest (>=6)", "pytest-black (>=0.3.7)", "pytest-checkdocs (>=2.4)", "pytest-cov", "pytest-enabler (>=1.0.1)", "pytest-flake8", "pytest-mypy", "types-backports"]
-
-[[package]]
 name = "contextlib2"
 version = "21.6.0"
 description = "Backports and enhancements for the contextlib module"
@@ -556,21 +540,6 @@ files = [
     {file = "contextlib2-21.6.0-py2.py3-none-any.whl", hash = "sha256:3fbdb64466afd23abaf6c977627b75b6139a5a3e8ce38405c5b413aed7a0471f"},
     {file = "contextlib2-21.6.0.tar.gz", hash = "sha256:ab1e2bfe1d01d968e1b7e8d9023bc51ef3509bba217bb730cee3827e1ee82869"},
 ]
-
-[[package]]
-name = "crayons"
-version = "0.4.0"
-description = "TextUI colors for Python."
-category = "main"
-optional = false
-python-versions = "*"
-files = [
-    {file = "crayons-0.4.0-py2.py3-none-any.whl", hash = "sha256:e73ad105c78935d71fe454dd4b85c5c437ba199294e7ffd3341842bc683654b1"},
-    {file = "crayons-0.4.0.tar.gz", hash = "sha256:bd33b7547800f2cfbd26b38431f9e64b487a7de74a947b0fafc89b45a601813f"},
-]
-
-[package.dependencies]
-colorama = "*"
 
 [[package]]
 name = "cryptography"
@@ -1585,15 +1554,14 @@ intervaltree = "^3.1.0"
 loguru = "^0.5.3"
 pandas = "^1.3.3"
 pdfplumber = "^0.5.28"
-selenium = "^4.0.0"
+selenium = ">=4.10"
 tryagain = "^1.0"
-webdriver-manager = "^3.5.0"
 
 [package.source]
 type = "git"
 url = "https://github.com/PhilaController/phl-courts-scraper.git"
 reference = "master"
-resolved_reference = "fd4d663755cad306966e976ec17857eaeef2eb92"
+resolved_reference = "eb2b1d6a98180b21722d897c7fd0aeb6216ed962"
 
 [[package]]
 name = "phonenumbers"
@@ -1893,25 +1861,6 @@ python-versions = "*"
 files = [
     {file = "pygtrie-2.4.2.tar.gz", hash = "sha256:43205559d28863358dbbf25045029f58e2ab357317a59b11f11ade278ac64692"},
 ]
-
-[[package]]
-name = "pyopenssl"
-version = "22.0.0"
-description = "Python wrapper module around the OpenSSL library"
-category = "main"
-optional = false
-python-versions = ">=3.6"
-files = [
-    {file = "pyOpenSSL-22.0.0-py2.py3-none-any.whl", hash = "sha256:ea252b38c87425b64116f808355e8da644ef9b07e429398bfece610f893ee2e0"},
-    {file = "pyOpenSSL-22.0.0.tar.gz", hash = "sha256:660b1b1425aac4a1bea1d94168a85d99f0b3144c869dd4390d27629d0087f1bf"},
-]
-
-[package.dependencies]
-cryptography = ">=35.0"
-
-[package.extras]
-docs = ["sphinx", "sphinx-rtd-theme"]
-test = ["flaky", "pretend", "pytest (>=3.0.1)"]
 
 [[package]]
 name = "pyparsing"
@@ -2355,19 +2304,21 @@ dev = ["mypy (==0.910)", "paramiko (==2.8.1)", "pylint (==2.11.1)", "pytest (==6
 
 [[package]]
 name = "selenium"
-version = "4.1.3"
+version = "4.11.2"
 description = ""
 category = "main"
 optional = false
-python-versions = "~=3.7"
+python-versions = ">=3.7"
 files = [
-    {file = "selenium-4.1.3-py3-none-any.whl", hash = "sha256:14d28a628c831c105d38305c881c9c7847199bfd728ec84240c5e86fa1c9bd5a"},
+    {file = "selenium-4.11.2-py3-none-any.whl", hash = "sha256:98e72117b194b3fa9c69b48998f44bf7dd4152c7bd98544911a1753b9f03cc7d"},
+    {file = "selenium-4.11.2.tar.gz", hash = "sha256:9f9a5ed586280a3594f7461eb1d9dab3eac9d91e28572f365e9b98d9d03e02b5"},
 ]
 
 [package.dependencies]
+certifi = ">=2021.10.8"
 trio = ">=0.17,<1.0"
 trio-websocket = ">=0.9,<1.0"
-urllib3 = {version = ">=1.26,<2.0", extras = ["secure", "socks"]}
+urllib3 = {version = ">=1.26,<3", extras = ["socks"]}
 
 [[package]]
 name = "setuptools"
@@ -2706,10 +2657,6 @@ files = [
 ]
 
 [package.dependencies]
-certifi = {version = "*", optional = true, markers = "extra == \"secure\""}
-cryptography = {version = ">=1.3.4", optional = true, markers = "extra == \"secure\""}
-idna = {version = ">=2.0.0", optional = true, markers = "extra == \"secure\""}
-pyOpenSSL = {version = ">=0.14", optional = true, markers = "extra == \"secure\""}
 PySocks = {version = ">=1.5.6,<1.5.7 || >1.5.7,<2.0", optional = true, markers = "extra == \"socks\""}
 
 [package.extras]
@@ -2755,23 +2702,6 @@ files = [
     {file = "wcwidth-0.2.5-py2.py3-none-any.whl", hash = "sha256:beb4802a9cebb9144e99086eff703a642a13d6a0052920003a230f3294bbe784"},
     {file = "wcwidth-0.2.5.tar.gz", hash = "sha256:c4d647b99872929fdb7bdcaa4fbe7f01413ed3d98077df798530e5b04f116c83"},
 ]
-
-[[package]]
-name = "webdriver-manager"
-version = "3.5.3"
-description = "Library provides the way to automatically manage drivers for different browsers"
-category = "main"
-optional = false
-python-versions = ">=3.6"
-files = [
-    {file = "webdriver_manager-3.5.3-py2.py3-none-any.whl", hash = "sha256:ef4320064bec22df5b2d7ea0509d08a99d3cecd1ddabd190f26f871dfa52a362"},
-    {file = "webdriver_manager-3.5.3.tar.gz", hash = "sha256:33c86736c51839abdcdeed1bbfd1f0d55277411bae4f232fdc9ace0c518e04f4"},
-]
-
-[package.dependencies]
-configparser = "*"
-crayons = "*"
-requests = "*"
 
 [[package]]
 name = "win32-setctime"
