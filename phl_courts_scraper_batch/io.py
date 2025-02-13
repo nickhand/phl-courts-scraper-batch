@@ -1,48 +1,7 @@
-import tempfile
 from pathlib import Path
 
-import boto3
 import pandas as pd
 import simplejson as json
-from dotenv import find_dotenv, load_dotenv
-
-
-def upload_dataset_to_s3(data, bucket_name, s3_key):
-    """
-    Upload a dataset as a CSV file to a public AWS s3 bucket.
-
-    Parameters
-    ----------
-    data : pd.DataFrame
-        The dataset to upload.
-    bucket_name : str
-        The AWS bucket name
-    s3_key : str
-        The path on AWS within the bucket to save the dataset.
-    """
-
-    # Load the credentials
-    load_dotenv(find_dotenv())
-
-    # Initialize the s3 resource
-    s3_client = boto3.client("s3")
-
-    # Create a temporary file
-    with tempfile.NamedTemporaryFile(suffix=".csv", delete=True) as tmpfile:
-        # Save DataFrame to a compressed CSV file
-        data.to_csv(tmpfile.name, index=False, compression="gzip")
-
-        # Upload to s3
-        s3_client.upload_file(
-            tmpfile.name,
-            bucket_name,
-            s3_key,
-            ExtraArgs={
-                "ContentType": "application/csv",
-                "ContentEncoding": "gzip",
-                "ACL": "public-read",
-            },
-        )
 
 
 def get_output_paths(flavor, output_folder, chunk):
