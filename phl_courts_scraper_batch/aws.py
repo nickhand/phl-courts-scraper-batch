@@ -1,4 +1,5 @@
 import os
+import sys
 from pathlib import Path
 
 import boto3
@@ -9,7 +10,7 @@ from fsspec.implementations.local import LocalFileSystem
 from loguru import logger
 from s3fs import S3FileSystem
 
-from . import APP_NAME, DATA_DIR, HOME_DIR, io
+from . import CMD
 
 
 def parse_aws_path(path):
@@ -45,7 +46,7 @@ class AWS:
 
         # Set up the file systems
         self.remote = S3FileSystem()
-        self.local = LocalFileSystem(str(HOME_DIR))
+        self.local = LocalFileSystem()
 
         # Set up clients
         self.ecs = self.session.client("ecs")
@@ -53,17 +54,15 @@ class AWS:
         self.s3 = self.session.client("s3")
 
         # Set up the output s3 bucket (and create it if we need to)
-        self.bucket_name = APP_NAME
-        if not self.remote.exists(self.bucket_name):
-            self.s3.create_bucket(Bucket=self.bucket_name)
+        # self.bucket_name = BUCKET_NAME
+        # if not self.remote.exists(self.bucket_name):
+        #     self.s3.create_bucket(Bucket=self.bucket_name)
 
         # Are we running on AWS
         self.on_aws = is_ec2_instance()
 
         # Set up cluster if we're not on AWS
-        self.cluster_name = f"{APP_NAME}-cluster"
-        if not self.on_aws:
-            self._init_cluster()
+        self.cluster_name = f"{CMD}-cluster"
 
     def _init_cluster(self):
         """Initialize the ECS cluster."""
@@ -80,7 +79,7 @@ class AWS:
             logger.info(f"Subnets: {self.subnets}")
 
         # Get the latest task definition
-        tasks = self.ecs.list_task_definitions(familyPrefix=APP_NAME, sort="ASC")
+        tasks = self.ecs.list_task_definitions(familyPrefix=CMD, sort="ASC")
         self.task_definition = tasks["taskDefinitionArns"][-1]
 
         if self.debug:
@@ -93,7 +92,6 @@ class AWS:
         if path.startswith("s3://"):
             fs = self.remote
         else:
-            path = str(Path(path).resolve().relative_to(HOME_DIR))
             fs = self.local
 
         return fs.exists(path)
@@ -101,9 +99,9 @@ class AWS:
     def submit_jobs(
         self,
         flavor,
-        dataset,
+        input_filename,
+        output_folder,
         search_by=None,
-        tag=None,
         pid=None,
         dry_run=False,
         sample=None,
@@ -113,10 +111,10 @@ class AWS:
         sleep=2,
         interval=1,
         time_limit=20,
-        output_folder=None,
         debug=False,
         ntasks=1,
         wait=False,
+        browser="chrome",
     ):
         """Submit jobs to the ECS cluster."""
 
@@ -132,13 +130,18 @@ class AWS:
             }
         }
 
+        # Log
+        if debug:
+            logger.debug(f"Output folder: {output_folder}")
+
         # Build the base command
         base_command = [
             "run",
-            APP_NAME,
+            CMD,
             "scrape",
             flavor,
-            dataset,
+            input_filename,  # This MUST be an s3 path
+            output_folder,  # This MUST be an s3 path
             f"--nprocs={ntasks}",
             f"--sleep={sleep}",
             f"--errors={errors}",
@@ -146,6 +149,7 @@ class AWS:
             f"--seed={seed}",
             f"--interval={interval}",
             f"--time-limit={time_limit}",
+            f"--browser={browser}",
         ]
 
         # Add the optional arguments
@@ -153,20 +157,10 @@ class AWS:
             base_command += [f"--search-by={search_by}"]
         if sample is not None:
             base_command += [f"--sample={sample}"]
-        if tag is not None:
-            base_command += [f"--tag={tag}"]
         if dry_run:
-            base_command += [f"--dry-run"]
+            base_command += ["--dry-run"]
         if debug:
             base_command += ["--debug"]
-
-        # Add output folder
-        output_folder, _ = io.get_output_paths(
-            flavor, dataset, chunk=None, output_folder=output_folder
-        )
-        if debug:
-            logger.debug(f"Output folder: {output_folder}")
-        base_command += [f"--output-folder={output_folder}"]
 
         # Run in parallel
         tasks = []
@@ -184,9 +178,7 @@ class AWS:
                 cluster=self.cluster_name,
                 networkConfiguration=NETWORK_CONFIG,
                 launchType="FARGATE",
-                overrides={
-                    "containerOverrides": [{"name": APP_NAME, "command": command}]
-                },
+                overrides={"containerOverrides": [{"name": CMD, "command": command}]},
             )
 
             tasks.append(task)
@@ -218,14 +210,14 @@ class AWS:
         task_ids = [task["tasks"][0]["taskArn"] for task in tasks]
 
         # Wait for all jobs to complete
-        logger.info(f"Waiting for tasks to complete")
+        logger.info("Waiting for tasks to complete")
         waiter = self.ecs.get_waiter("tasks_stopped")
         waiter.wait(
             cluster=self.cluster_name,
             tasks=task_ids,
             WaiterConfig={"Delay": 60, "MaxAttempts": 500},
         )
-        logger.info(f"...all tasks completed")
+        logger.info("...all tasks completed")
 
         # Check for errors
         task_results = self.ecs.describe_tasks(
@@ -238,16 +230,18 @@ class AWS:
         ]
         if any([code != 0 for code in exit_codes]):
             logger.warning("One or more tasks failed!")
+            sys.exit(1)
 
         # And combine
         logger.info("Combining parallel results on AWS")
-        outfile = self.combine_parallel_results(
-            flavor, dataset, f"s3://{APP_NAME}/{output_folder}/chunks"
-        )
+
+        # Add "chunks" to the output folder
+        chunks_output_folder = f"{output_folder}/chunks"
+        outfile = self.combine_parallel_results(flavor, chunks_output_folder)
 
         return outfile
 
-    def combine_parallel_results(self, flavor, dataset, output_folder):
+    def combine_parallel_results(self, flavor, output_folder):
         """Iterate through parallel, chunked scraping results from AWS."""
 
         # Invalidate the cache
@@ -274,15 +268,11 @@ class AWS:
             files = sorted(fs.glob(pattern))
             N = len(files)
             if N == 0:
-                raise ValueError(
-                    f"No files found for dataset '{dataset}' and kind '{flavor}' in output folder '{output_folder}'"
-                )
+                raise ValueError(f"No files found in output folder '{output_folder}'")
 
             # Combine
             if i == 0:
-                logger.info(
-                    f"Combining {N} files for dataset '{dataset}' and kind '{flavor}'"
-                )
+                logger.info(f"Combining {N} files from AWS")
             results = None
             for f in files:
 
@@ -329,79 +319,3 @@ class AWS:
                     results.to_csv(ff, header=False, index=False)
 
         return data_file
-
-    def sync(
-        self,
-        source: str,
-        dest: str,
-        dry_run: bool = False,
-    ) -> None:
-        """
-        Sync source to dest.
-
-        All elements existing in source that don't exist in dest will be
-        copied to dest. No element will be deleted.
-
-
-        Parameters
-        ----------
-        source: str
-            Source folder on AWS
-        dest: str
-            Destination folder locally
-
-        Returns
-        -------
-        None
-        """
-        # Determine the source
-        SOURCE = None
-        if source.startswith("s3://"):
-            SOURCE = "aws"
-        elif dest.startswith("s3://"):
-            SOURCE = "local"
-        else:
-            raise ValueError("One of source or dest should start with s3://")
-
-        # AWS to local
-        if SOURCE == "aws":
-            source_fs = self.remote
-            dest_fs = self.local
-
-            # Make sure dest is relative to HOME_DIR
-            dest = str(Path(dest).resolve().relative_to(HOME_DIR))
-
-        # Local to AWS
-        else:
-            source_fs = self.local
-            dest_fs = self.remote
-
-            # Make sure source is relative to HOME_DIR
-            source = str(Path(source).resolve().relative_to(HOME_DIR))
-
-        # Get the source files
-        source_files = source_fs.find(source)
-        for source_file in source_files:
-
-            # Make it relative to HOME_DIR if we need to
-            if SOURCE == "local":
-                source_file = str(Path(source_file).resolve().relative_to(HOME_DIR))
-
-            # Remove the root from the source file
-            source_file_key = "/".join(source_file.split("/")[1:])
-
-            # Get source file path on dest system
-            dest_file = f"{dest}/{source_file_key}"
-
-            # Update if file doesn't exist or is out of date
-            if not Path(dest_file).exists() or source_fs.modified(
-                source_file
-            ) > dest_fs.modified(dest_file):
-
-                logger.info(f"Syncing {source_file} to {dest_file}")
-                if not dry_run:
-
-                    if SOURCE == "aws":
-                        self.remote.get(source_file, str(HOME_DIR / dest_file))
-                    else:
-                        self.remote.put(str(HOME_DIR / source_file), dest_file)

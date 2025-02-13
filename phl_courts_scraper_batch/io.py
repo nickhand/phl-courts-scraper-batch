@@ -1,22 +1,52 @@
-import os
-from datetime import date
+import tempfile
 from pathlib import Path
 
+import boto3
 import pandas as pd
 import simplejson as json
-from loguru import logger
-
-from . import APP_NAME, DATA_DIR
+from dotenv import find_dotenv, load_dotenv
 
 
-def get_output_paths(flavor, dataset, chunk, output_folder=None):
+def upload_dataset_to_s3(data, bucket_name, s3_key):
+    """
+    Upload a dataset as a CSV file to a public AWS s3 bucket.
+
+    Parameters
+    ----------
+    data : pd.DataFrame
+        The dataset to upload.
+    bucket_name : str
+        The AWS bucket name
+    s3_key : str
+        The path on AWS within the bucket to save the dataset.
+    """
+
+    # Load the credentials
+    load_dotenv(find_dotenv())
+
+    # Initialize the s3 resource
+    s3_client = boto3.client("s3")
+
+    # Create a temporary file
+    with tempfile.NamedTemporaryFile(suffix=".csv", delete=True) as tmpfile:
+        # Save DataFrame to a compressed CSV file
+        data.to_csv(tmpfile.name, index=False, compression="gzip")
+
+        # Upload to s3
+        s3_client.upload_file(
+            tmpfile.name,
+            bucket_name,
+            s3_key,
+            ExtraArgs={
+                "ContentType": "application/csv",
+                "ContentEncoding": "gzip",
+                "ACL": "public-read",
+            },
+        )
+
+
+def get_output_paths(flavor, output_folder, chunk):
     """Get the output paths."""
-    # Determine the output folder
-    if output_folder is None:
-
-        # Tag folder with today's date
-        tag = date.today().strftime("%Y-%m-%d")
-        output_folder = f"results/{dataset}/{tag}"
 
     if chunk is None:
         outfile = f"{flavor}_results.json"
@@ -28,12 +58,7 @@ def get_output_paths(flavor, dataset, chunk, output_folder=None):
     return output_folder, outfile
 
 
-def load_input_data(
-    flavor,
-    dataset,
-    aws,
-    tag=None,
-):
+def load_input_data(flavor, input_filename, aws):
     """
     Load the input data for the scraper.
 
@@ -43,71 +68,45 @@ def load_input_data(
     Parameters
     ----------
     flavor : str
-    dataset : str
+    input_filename : str
     aws : AWS
-    tag : str, optional
     """
-    # Get the input CSV
-    if flavor == "portal":
-
-        # The CSV path
-        relpath = f"datasets/{dataset}.csv"
-
-    # Get the input JSON
-    else:
-        path = f"results/{dataset}/"
-
-        # Add the date tag
-        if tag is None:
-            tags = sorted(Path(path).glob("*"), reverse=True)
-            if len(tags) > 0:
-                tag = tags[0].name
-            else:
-                raise ValueError(
-                    "No input data yet — do you need to run the portal scraper first?"
-                )
-        logger.info(f"Using latest tag: {tag}")
-        path += tag
-
-        # Add the filename
-        relpath = f"{path}/{flavor}.json"
-
-    # Get the prefix
-    prefix = f"s3://{APP_NAME}" if aws.on_aws else str(DATA_DIR)
-
-    # Create the infile
-    infile = f"{prefix}/{relpath}"
-
     # Make sure the infile exists
-    if not aws.exists(infile):
-        raise ValueError(f"Infile '{infile}' does not exist.")
+    if not aws.exists(input_filename):
+        raise ValueError(f"Input filename '{input_filename}' does not exist.")
 
     # Determine where we are loading the data from
-    if infile.startswith("s3://"):
+    if input_filename.startswith("s3://"):
         opener = aws.remote.open
     else:
         opener = aws.local.open
 
     # Load the data
-    with opener(infile, "rb") as ff:
+    with opener(input_filename, "rb") as ff:
 
         # Load a CSV file
         if flavor == "portal":
+
+            # Make sure it's a CSV file
+            if not input_filename.endswith(".csv"):
+                raise ValueError("Input file should end in .csv")
+
+            # Return loaded data
             return pd.read_csv(
                 ff, header=None, names=["value"], squeeze=True, dtype={"value": str}
             )
         else:  # A JSON file
+
+            # Make sure it's a JSON file
+            if not input_filename.endswith(".json"):
+                raise ValueError("Input file should end in .json")
+
+            # Return data
             return json.loads(ff.read())
 
 
 def save_output_data(outfile, results, aws):
     """Save the output data for the scraper."""
-
-    # Get the prefix
-    prefix = f"s3://{APP_NAME}" if aws.on_aws else str(DATA_DIR)
-
-    # Create the infile
-    outfile = f"{prefix}/{outfile}"
 
     # Make sure local output folder exists
     if not outfile.startswith("s3://"):

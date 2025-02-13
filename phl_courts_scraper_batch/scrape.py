@@ -17,14 +17,13 @@ def _scrape(
     search_by=None,
     sleep: int = 7,
     log_freq: int = 50,
+    browser: str = "chrome",
     errors: str = "ignore",
     interval: int = 1,
     time_limit: int = 20,
     debug=False,
 ):
     """The actual scraping function."""
-    if search_by is None and flavor == "portal":
-        raise ValueError("search_by must be specified for flavor = 'portal'")
 
     # Extract info from the UJS portal
     if flavor == "portal":
@@ -35,7 +34,11 @@ def _scrape(
                 f"Initializing portal scraper: search_by={search_by}, sleep={sleep}, log_freq={log_freq}, errors={errors}"
             )
         scraper = UJSPortalScraper(
-            search_by=search_by, sleep=sleep, log_freq=log_freq, errors="raise"
+            search_by=search_by,
+            sleep=sleep,
+            log_freq=log_freq,
+            errors="raise",
+            browser=browser,
         )
 
         if debug:
@@ -45,17 +48,18 @@ def _scrape(
             logger.debug("...done")
 
     # Extract info from PDFs
-    else:
+    elif flavor == "court_summary":
 
         # Prepend the base domain
         urls = "https://ujsportal.pacourts.us" + data["court_summary_url"]
 
         # Initialize the scraper
-        if flavor == "court_summary":
-            scraper = CourtSummaryParser(sleep=sleep, log_freq=log_freq, errors=errors)
-        elif flavor == "bail":
-            return  # FIXME
-            # scraper = DocketSheetParser(sleep=sleep, log_freq=log_freq, errors=errors)
+        scraper = CourtSummaryParser(
+            sleep=sleep,
+            log_freq=log_freq,
+            errors=errors,
+            browser=browser,
+        )
 
         # Run the analysis
         results = scraper.scrape_remote_urls(
@@ -63,21 +67,26 @@ def _scrape(
         )
 
         # Add original info
-        if flavor == "bail":
-            out = data.to_dict(orient="records")
-            for i, row in enumerate(out):
-                url = urls[i]
-                row["bail"] = results[url]
-            results = out
+        # BROKEN
+        # if flavor == "bail":
+        #     out = data.to_dict(orient="records")
+        #     for i, row in enumerate(out):
+        #         url = urls[i]
+        #         row["bail"] = results[url]
+        #     results = out
+
+    else:
+        raise ValueError("'flavor' must be one of 'portal', 'court_summary'")
 
     return results
 
 
 def scrape(
     flavor: str,
-    dataset: str,
+    input_filename: str,
+    output_folder: str,
     search_by: str = None,
-    tag: str = None,
+    browser: str = "chrome",
     nprocs: int = None,
     pid: int = None,
     dry_run: bool = False,
@@ -88,7 +97,6 @@ def scrape(
     sleep: int = 7,
     interval: int = 1,
     time_limit: int = 20,
-    output_folder: str = None,
     debug: bool = False,
 ):
     """
@@ -98,8 +106,10 @@ def scrape(
     ----------
     flavor :
         The kind of data to scrape; one of 'portal', 'court_summary', or 'bail'
-    dataset :
-        The name of the dataset to process
+    input_filename :
+        The name of the input filename with data to process
+    output_folder :
+        The name of the output folder to save the results
     nprocs : optional
         The total number of processors running the scraper
     pid : optional
@@ -131,7 +141,7 @@ def scrape(
     # Load input data
     if debug:
         logger.debug("Loading input data")
-    data = io.load_input_data(flavor=flavor, dataset=dataset, aws=aws, tag=tag)
+    data = io.load_input_data(flavor=flavor, input_filename=input_filename, aws=aws)
     if debug:
         logger.debug("...done")
 
@@ -159,6 +169,7 @@ def scrape(
         data_chunk,
         flavor,
         search_by=search_by,
+        browser=browser,
         sleep=sleep,
         log_freq=log_freq,
         errors=errors,
@@ -174,7 +185,9 @@ def scrape(
 
         # Get output folder and data path
         output_folder, outfile = io.get_output_paths(
-            flavor, dataset, chunk, output_folder=output_folder
+            flavor=flavor,
+            output_folder=output_folder,
+            chunk=chunk,
         )
 
         if debug:
@@ -184,11 +197,11 @@ def scrape(
         io.save_output_data(outfile, results, aws=aws)
 
         # Get the input config
-        l = locals()
+        local_variables = locals()
         frame = inspect.currentframe()
         fname = inspect.getframeinfo(frame).function
         sig = inspect.signature(globals()[fname])
-        config = {p: l[p] for p in sig.parameters}
+        config = {p: local_variables[p] for p in sig.parameters}
 
         # Save the config and input
         if chunk is not None:

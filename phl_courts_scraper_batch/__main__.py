@@ -1,6 +1,7 @@
+from pathlib import Path
+
 import click
 
-from . import APP_NAME, DATA_DIR, SOURCES
 from .aws import AWS
 from .scrape import scrape as _scrape
 
@@ -12,14 +13,20 @@ def cli():
 
 
 @cli.command(name="scrape")
-@click.argument("flavor", type=click.Choice(SOURCES))
-@click.argument("dataset", type=str)
+@click.argument("flavor", type=click.Choice(["court_summary", "portal"]))
+@click.argument("input_filename", type=str)
+@click.argument("output_folder", type=str)
 @click.option(
     "--search-by",
     type=click.Choice(["Incident Number", "Docket Number"]),
     help="How to search the portal",
 )
-@click.option("--tag", type=str, help="The tag to use for the dataset")
+@click.option(
+    "--browser",
+    type=click.Choice(["chrome", "firefox"]),
+    help="The browser to use for scraping",
+    default="chrome",
+)
 @click.option(
     "--nprocs",
     type=int,
@@ -45,7 +52,7 @@ def cli():
 @click.option(
     "--log-freq",
     default=10,
-    help="Log frequency within loop of scraping PDFs",
+    help="Log frequency within loop of scraping",
     type=int,
 )
 @click.option(
@@ -78,7 +85,6 @@ def cli():
     help="How long to wait when downloading PDFs before checking for success",
     type=int,
 )
-@click.option("-o", "--output-folder", default=None, help="Output folder")
 @click.option("--aws", is_flag=True, help="Run scraping job on AWS")
 @click.option(
     "--ntasks", default=20, type=int, help="The number of tasks to use on AWS."
@@ -87,9 +93,10 @@ def cli():
 @click.option("--debug", is_flag=True)
 def scrape(
     flavor,
-    dataset,
+    input_filename,
+    output_folder,
     search_by=None,
-    tag=None,
+    browser="chrome",
     nprocs=None,
     pid=None,
     dry_run=False,
@@ -100,20 +107,39 @@ def scrape(
     sleep=2,
     interval=1,
     time_limit=20,
-    output_folder=None,
     aws=False,
     ntasks=20,
     no_wait=False,
     debug=False,
 ):
-    """Scrape court-related data from the specified source."""
+    """
+    Scrape court-related data from the specified flavor of data.
+    """
+
+    # If we are on aws, paths need to be s3 buckets
+    if aws:
+        if not input_filename.startswith("s3://"):
+            raise ValueError("Input filename must be an s3 bucket when running on AWS")
+        if not output_folder.startswith("s3://"):
+            raise ValueError("Output folder must be an s3 bucket when running on AWS")
+    else:  # Running locally
+
+        # Convert local paths to Path objects and resolve to absolute paths
+        if not input_filename.startswith("s3://"):
+            input_filename = str(Path(input_filename).resolve())
+        if not output_folder.startswith("s3://"):
+            output_folder = str(Path(output_folder).resolve())
+
+    # "search_by" must be specified for flavor = "portal"
+    if search_by is None and flavor == "portal":
+        raise ValueError("'search_by' must be specified for flavor = 'portal'")
 
     # Get the arguments
     kwargs = {
         "flavor": flavor,
-        "dataset": dataset,
+        "input_filename": input_filename,
+        "output_folder": output_folder,
         "search_by": search_by,
-        "tag": tag,
         "pid": pid,
         "dry_run": dry_run,
         "sample": sample,
@@ -123,8 +149,8 @@ def scrape(
         "sleep": sleep,
         "interval": interval,
         "time_limit": time_limit,
-        "output_folder": output_folder,
         "debug": debug,
+        "browser": browser,
     }
 
     # Run job on AWS
@@ -138,23 +164,3 @@ def scrape(
     # Run locally
     else:
         return _scrape(**kwargs, nprocs=nprocs)
-
-
-@cli.command()
-@click.option("--dry-run", is_flag=True, help="Do not save the results; dry run only.")
-def sync_from_aws(from_aws=True, dry_run=False):
-    """Sync scraping results from AWS."""
-    aws = AWS()
-    source = f"s3://{APP_NAME}"
-    dest = DATA_DIR
-    return aws.sync(source, dest, dry_run=dry_run)
-
-
-@cli.command()
-@click.option("--dry-run", is_flag=True, help="Do not save the results; dry run only.")
-def sync_to_aws(dry_run=False):
-    """Sync scraping results to/from AWS."""
-    aws = AWS()
-    dest = f"s3://{APP_NAME}"
-    source = str(DATA_DIR)
-    return aws.sync(source, dest, dry_run=dry_run)

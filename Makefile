@@ -1,7 +1,10 @@
-.PHONY: container
+SHELL := /bin/bash
+.PHONY: container test
+
+include .env
 
 container:
-	aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 529082709986.dkr.ecr.us-east-1.amazonaws.com
-	docker build -t phl-courts-scraper-batch .
-	docker tag phl-courts-scraper-batch:latest 529082709986.dkr.ecr.us-east-1.amazonaws.com/phl-courts-scraper-batch:latest
-	docker push 529082709986.dkr.ecr.us-east-1.amazonaws.com/phl-courts-scraper-batch:latest
+	export AWS_ACCESS_KEY_ID=$(AWS_ACCESS_KEY_ID); export AWS_SECRET_ACCESS_KEY=$(AWS_SECRET_ACCESS_KEY); aws ecr get-login-password --region $(AWS_REGION) | docker login --username AWS --password-stdin $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com
+	docker buildx build --platform=linux/amd64  -t $(CONTAINER_NAME) .
+	docker tag $(CONTAINER_NAME):latest $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/$(CONTAINER_NAME):latest
+	docker push $(AWS_ACCOUNT_ID).dkr.ecr.${AWS_REGION}.amazonaws.com/$(CONTAINER_NAME):latest
